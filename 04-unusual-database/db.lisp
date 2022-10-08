@@ -46,7 +46,7 @@
   (let ((listener (usocket:socket-connect nil nil
 					  :protocol :datagram
 					  :element-type '(unsigned-byte 8)
-					  :local-host "69.195.136.234"
+					  :local-host "0.0.0.0"
 					  :local-port 42069)))
     (sb-thread:make-thread (lambda ()
 			     (ingress-loop listener))
