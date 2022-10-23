@@ -22,6 +22,19 @@
   (write-sequence (string-to-octets msg) stream)
   (force-output stream))
 
+
+;;as it currently stands this DOES NOT WORK on Linux
+;;
+;;There is a divergence of behaviour where the solution works on macOS (some errors about
+;;bad FDs notwithstanding), but on Linux the following is required:
+;;
+;;Suppose the client->proxy segment signals EOF.  You close the proxy->server segment
+;;as per normal, however it appears that on linux a TCP FIN packet is not sent until
+;;the other thread is destroyed.  The simplest albeit messy solution is to just call
+;;(bt:destroy-thread other-thread)
+;;
+;;or, alternatively, use socat and a wireguard tunnel to run this on your mactop
+
 (defun proxy-thread (src-sock dst-sock stdout)
   "relays messages from src to dst."
   (unwind-protect
@@ -35,16 +48,18 @@
 		    (let ((new-msg (rewrite-addresses (octets-to-string recv))))
 		      (write-to-stream dst new-msg) 
 		      (format stdout "~a -> ~a: ~a" src-sock dst-sock new-msg))
-		    (setf recv (make-array 1 :fill-pointer 0 :element-type '(unsigned-byte 8))) 	       else
-	       do (vector-push-extend b recv))
+		    (setf recv (make-array 1 :fill-pointer 0 :element-type '(unsigned-byte 8)))
+	       else
+		 do (vector-push-extend b recv))
 	 (force-output dst))
     (format stdout "closing ~a~%" dst-sock)
+    (close dst :abort t)
     (usocket:socket-close dst-sock)))
 
 (defun spawn-handler (handler &rest args)
   (sb-thread:make-thread (lambda () (apply handler args))))
 
-(defun init (&key (address "0.0.0.0") (port 42069))
+(defun init (&key (address "fd85:8585::2") (port 42069))
   (let ((listener (usocket:socket-listen address port
 					 :element-type '(unsigned-byte 8)
 					 :reuse-address t)))
@@ -60,5 +75,3 @@
 			     (spawn-handler #'proxy-thread a c *standard-output*)
 			     (spawn-handler #'proxy-thread c a *standard-output*))))
       (usocket:socket-close listener))))
-
-;;;; CHECK EOF handling
